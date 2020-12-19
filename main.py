@@ -10,9 +10,15 @@ import numpy as np
 
 
 space = hp.choice('classifier_type', [
-    # {
-    #     'type': 'RF',
-    # },
+    {
+        'preprocessing': hp.choice('Preprocessing', ['None', 'PCA'])
+    },
+    {
+        'type': 'RF',
+        'min_samples_split': hp.choice('min_samples_split', [2, 4, 7, 10, 12]),
+        'max_features': hp.choice('max_features', [0.01, 0.04, 0.08, 0.16, 0.32, 0.64, 0.7, 0.8, 0.9, 0.99]),
+        'criterion': hp.choice('criterion', ['gini', 'entropy'])
+    },
     {
         'type': 'SVM_Linear',
         'C': hp.loguniform('SVM_Linear_C', -15.0, 15.0),
@@ -40,7 +46,8 @@ def objective(args):
     # args['max_iter'] = 100000
     del args['type']
     if classifier_type == 'RF':
-        clf = RandomForestClassifier()
+        print(args)
+        clf = RandomForestClassifier(**args)
     elif classifier_type == 'SVM_Linear':
         params = dict({'dual': False}, **args)
         clf = LinearSVC(**params)
