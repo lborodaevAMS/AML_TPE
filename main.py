@@ -115,13 +115,13 @@ def precalculate_performance():
         for k, v in trials.best_trial['misc']['vals'].items():
             if len(v) > 0:
                 row.at[k] = v[0]
-    pickle.dump(df, open('metafeatures_original_perf_new.p', 'wb'))
-    df.to_csv('metafeatures_original_perf_new.csv')
+    # pickle.dump(df, open('metafeatures_original_perf.p', 'wb'))
+    # df.to_csv('metafeatures_original_perf.csv')
 
 
 if __name__ == '__main__':
-    precalculate_performance()
-    # print()
+    # precalculate_performance()
+    df = pickle.load(open('metafeatures_original_perf.p', 'rb'))
     # print(trials.best_trial['misc']['vals'])
         # trials = Trials()
         # as initial values pick points uniformly on the x-axis; we need this as a dict
