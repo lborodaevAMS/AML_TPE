@@ -88,8 +88,7 @@ def plot_losses(losses):
 
 
 if __name__ == '__main__':
-
-    df = pickle.load(open('original_datasets_metafeatures.p', 'rb')).iloc[0:10]
+    df = pickle.load(open('original_datasets_metafeatures.p', 'rb'))
     df['preprocessing'] = np.nan
     df['criterion'] = ''
     df['max_features'] = np.nan
@@ -100,6 +99,7 @@ if __name__ == '__main__':
     df['kernel'] = ''
     df['penalty'] = ''
     for idx, row in df.iterrows():
+        print('Processing {} out of {}...'.format(idx, len(df)))
         path_prefix = 'original_datasets/' + row['dataset_name']
         try:
             X_train = pickle.load(open(path_prefix + '/X_train.p', 'rb'))
@@ -112,9 +112,8 @@ if __name__ == '__main__':
         trials = Trials()
         data = {'X_train': X_train, 'X_test': X_test, 'y_train': y_train, 'y_test': y_test}
         fmin_objective = partial(objective, data=data)
-        best = fmin(fn=fmin_objective, space=space, algo=tpe.suggest, max_evals=10, trials=trials)
+        best = fmin(fn=fmin_objective, space=space, algo=tpe.suggest, max_evals=50, trials=trials)
         x_prime = space_eval(space, best)
-        print(x_prime)
         if x_prime['preprocessing'] == 'None':
             df.at[idx, 'preprocessing'] = np.nan
         else:
@@ -122,8 +121,8 @@ if __name__ == '__main__':
         del x_prime['preprocessing']
         for k, v in x_prime.items():
             df.at[idx, k] = v
-        print(df.iloc[idx])
-        exit()
-    print(df)
+    # pickle.dump(df, open('metafeatures_original_perf.p', 'wb'))
+    # df.to_csv('metafeatures_original_perf.csv')
+
 
 
