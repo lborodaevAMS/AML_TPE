@@ -71,15 +71,30 @@ def objective(args):
     return (y_pred != y_test).mean()
 
 
+def plot_losses(losses):
+    best_so_far = np.inf
+    x = np.full(len(losses) // 5, np.inf)
+    for i in range(len(losses)):
+        if losses[i] < best_so_far:
+            best_so_far = losses[i]
+        if i % 5 == 0:
+            x[i // 5] = best_so_far
+    plt.plot(range(len(x)), x, marker='x')
+    plt.show()
+
+
 trials = Trials()
 
 
+
+
 if __name__ == '__main__':
-    best = fmin(fn=objective, space=space, algo=tpe.suggest, max_evals=100, trials=trials)
+    best = fmin(fn=objective, space=space, algo=tpe.suggest, max_evals=1000, trials=trials)
     # best = fmin(fn=objective, space=hp.loguniform('x', -5, 15), algo=tpe.suggest, max_evals=100, trials=trials)
     l = trials.losses()
     print(space_eval(space, best))
     x_prime = space_eval(space, best)
+    plot_losses(trials.losses())
 
 
 
