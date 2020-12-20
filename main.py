@@ -87,7 +87,7 @@ def plot_losses(losses):
     plt.show()
 
 
-if __name__ == '__main__':
+def precalculate_tpe_performance():
     df = pickle.load(open('original_datasets_metafeatures.p', 'rb'))
     df['preprocessing'] = np.nan
     df['criterion'] = ''
@@ -123,6 +123,10 @@ if __name__ == '__main__':
             df.at[idx, k] = v
     # pickle.dump(df, open('metafeatures_original_perf.p', 'wb'))
     # df.to_csv('metafeatures_original_perf.csv')
+
+
+if __name__ == '__main__':
+    ...
 
 
 
