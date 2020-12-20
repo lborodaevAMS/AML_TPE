@@ -6,11 +6,16 @@ from sklearn.svm import SVC, LinearSVC
 from sklearn.decomposition import PCA
 from sklearn.utils.testing import ignore_warnings
 from sklearn.exceptions import ConvergenceWarning
-import time
+import os
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from functools import partial
 
+
+pd.options.display.max_rows = 999
+pd.options.display.max_columns = 50
 
 space = hp.choice('classifier_type', [
     {
@@ -37,20 +42,17 @@ space = hp.choice('classifier_type', [
     },
 ])
 
-# import some data to play with
-iris = datasets.load_iris()
-X = iris.data[:, :2]  # we only take the first two features.
-y = iris.target
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
 
 
 @ignore_warnings(category=ConvergenceWarning)
-def objective(args):
+def objective(args, data):
+    X_train, X_test, y_train, y_test = data['X_train'], data['X_test'], data['y_train'], data['y_test']
     preprocess = args['preprocessing']
     if preprocess != 'None':
         pca = PCA(n_components=preprocess, svd_solver='full')
         pca.fit(X_train)
         X_train_pc = pca.transform(X_train)
+        X_test_pc = pca.transform(X_test)
     del args['preprocessing']
     classifier_type = args['type']
     del args['type']
@@ -65,9 +67,11 @@ def objective(args):
         raise NotImplemented
     if preprocess != 'None':
         clf.fit(X_train_pc, y_train)
+        y_pred = clf.predict(X_test_pc)
     else:
         clf.fit(X_train, y_train)
-    y_pred = clf.predict(X_test)
+        y_pred = clf.predict(X_test)
+    del clf
     return (y_pred != y_test).mean()
 
 
@@ -83,18 +87,43 @@ def plot_losses(losses):
     plt.show()
 
 
-trials = Trials()
-
-
-
-
 if __name__ == '__main__':
-    best = fmin(fn=objective, space=space, algo=tpe.suggest, max_evals=1000, trials=trials)
-    # best = fmin(fn=objective, space=hp.loguniform('x', -5, 15), algo=tpe.suggest, max_evals=100, trials=trials)
-    l = trials.losses()
-    print(space_eval(space, best))
-    x_prime = space_eval(space, best)
-    plot_losses(trials.losses())
 
+    df = pickle.load(open('original_datasets_metafeatures.p', 'rb')).iloc[0:10]
+    df['preprocessing'] = np.nan
+    df['criterion'] = ''
+    df['max_features'] = np.nan
+    df['max_samples_split'] = np.nan
+    df['type'] = ''
+    df['C'] = np.nan
+    df['gamma'] = np.nan
+    df['kernel'] = ''
+    df['penalty'] = ''
+    for idx, row in df.iterrows():
+        path_prefix = 'original_datasets/' + row['dataset_name']
+        try:
+            X_train = pickle.load(open(path_prefix + '/X_train.p', 'rb'))
+            X_test = pickle.load(open(path_prefix + '/X_test.p', 'rb'))
+            y_train = pickle.load(open(path_prefix + '/y_train.p', 'rb'))
+            y_test = pickle.load(open(path_prefix + '/y_test.p', 'rb'))
+            assert X_train.shape[1] == X_test.shape[1]
+        except FileNotFoundError:
+            print(path_prefix + ' not found')
+        trials = Trials()
+        data = {'X_train': X_train, 'X_test': X_test, 'y_train': y_train, 'y_test': y_test}
+        fmin_objective = partial(objective, data=data)
+        best = fmin(fn=fmin_objective, space=space, algo=tpe.suggest, max_evals=10, trials=trials)
+        x_prime = space_eval(space, best)
+        print(x_prime)
+        if x_prime['preprocessing'] == 'None':
+            df.at[idx, 'preprocessing'] = np.nan
+        else:
+            df.at[idx, 'preprocessing'] = x_prime['preprocessing']
+        del x_prime['preprocessing']
+        for k, v in x_prime.items():
+            df.at[idx, k] = v
+        print(df.iloc[idx])
+        exit()
+    print(df)
 
 
