@@ -1,4 +1,5 @@
 from hyperopt import hp, fmin, tpe, STATUS_OK, Trials, space_eval, rand
+from hyperopt.fmin import generate_trials_to_calculate
 from sklearn import datasets
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
@@ -89,15 +90,10 @@ def plot_losses(losses):
 
 def precalculate_performance():
     df = pickle.load(open('metafeatures_original_perf.p', 'rb'))
-    df['preprocessing'] = np.nan
-    df['criterion'] = ''
-    df['max_features'] = np.nan
-    df['max_samples_split'] = np.nan
-    df['type'] = ''
-    df['C'] = np.nan
-    df['gamma'] = np.nan
-    df['kernel'] = ''
-    df['penalty'] = ''
+    for c in ['RF_PCA', 'RF_preprocessing', 'SVM_C', 'SVM_Gamma', 'SVM_Linear_C', 'SVM_Linear_PCA', 'SVM_Linear_Penalty',
+                'SVM_Linear_preprocessing', 'SVM_RBF_PCA', 'SVM_RBF_preprocessing', 'classifier_type', 'criterion', 'max_features',
+                'min_samples_split']:
+        df[c] = np.nan
     for idx, row in df.iterrows():
         print('Processing {} out of {}...'.format(idx, len(df)))
         path_prefix = 'original_datasets/' + row['dataset_name']
@@ -113,20 +109,33 @@ def precalculate_performance():
         data = {'X_train': X_train, 'X_test': X_test, 'y_train': y_train, 'y_test': y_test}
         fmin_objective = partial(objective, data=data)
         best = fmin(fn=fmin_objective, space=space, algo=rand.suggest, max_evals=50, trials=trials)
-        x_prime = space_eval(space, best)
-        if x_prime['preprocessing'] == 'None':
-            df.at[idx, 'preprocessing'] = np.nan
-        else:
-            df.at[idx, 'preprocessing'] = x_prime['preprocessing']
-        del x_prime['preprocessing']
-        for k, v in x_prime.items():
-            df.at[idx, k] = v
-    # pickle.dump(df, open('metafeatures_original_perf.p', 'wb'))
-    # df.to_csv('metafeatures_original_perf.csv')
+        for k, v in trials.best_trial['misc']['idxs'].items():
+            if len(v) > 0:
+                row.at[k] = v[0]
+        for k, v in trials.best_trial['misc']['vals'].items():
+            if len(v) > 0:
+                row.at[k] = v[0]
+    pickle.dump(df, open('metafeatures_original_perf_new.p', 'wb'))
+    df.to_csv('metafeatures_original_perf_new.csv')
 
 
 if __name__ == '__main__':
     precalculate_performance()
+    # print()
+    # print(trials.best_trial['misc']['vals'])
+        # trials = Trials()
+        # as initial values pick points uniformly on the x-axis; we need this as a dict
+        # init_vals = [config]
+        # init_vals = [{'RF_PCA': 0.8, 'RF_preprocessing': 0,
+        #               'classifier_type': 0, 'criterion': 0,
+        #               'max_features': 0, 'min_samples_split': 0}]
+
+        # this generates a trial object that can be used to bootstrap computation for the optimizer
+        # trials = generate_trials_to_calculate(init_vals)
+        # data = {'X_train': X_train, 'X_test': X_test, 'y_train': y_train, 'y_test': y_test}
+        # fmin_objective = partial(objective, data=data)
+        # best = fmin(fn=fmin_objective, space=space, algo=tpe.suggest, max_evals=3, trials=trials)
+        # x_prime = space_eval(space, best)
 
 
 
