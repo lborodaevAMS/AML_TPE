@@ -1,4 +1,4 @@
-from hyperopt import hp, fmin, tpe, STATUS_OK, Trials, space_eval
+from hyperopt import hp, fmin, tpe, STATUS_OK, Trials, space_eval, rand
 from sklearn import datasets
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
@@ -87,8 +87,8 @@ def plot_losses(losses):
     plt.show()
 
 
-def precalculate_tpe_performance():
-    df = pickle.load(open('original_datasets_metafeatures.p', 'rb'))
+def precalculate_performance():
+    df = pickle.load(open('metafeatures_original_perf.p', 'rb'))
     df['preprocessing'] = np.nan
     df['criterion'] = ''
     df['max_features'] = np.nan
@@ -112,7 +112,7 @@ def precalculate_tpe_performance():
         trials = Trials()
         data = {'X_train': X_train, 'X_test': X_test, 'y_train': y_train, 'y_test': y_test}
         fmin_objective = partial(objective, data=data)
-        best = fmin(fn=fmin_objective, space=space, algo=tpe.suggest, max_evals=50, trials=trials)
+        best = fmin(fn=fmin_objective, space=space, algo=rand.suggest, max_evals=50, trials=trials)
         x_prime = space_eval(space, best)
         if x_prime['preprocessing'] == 'None':
             df.at[idx, 'preprocessing'] = np.nan
@@ -126,7 +126,7 @@ def precalculate_tpe_performance():
 
 
 if __name__ == '__main__':
-    ...
+    precalculate_performance()
 
 
 
