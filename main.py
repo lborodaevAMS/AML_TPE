@@ -90,6 +90,7 @@ def plot_losses(losses):
 
 def precalculate_performance():
     df = pickle.load(open('metafeatures_original_perf.p', 'rb'))
+    df = df[df['dataset_name'] != 'optdigits']
     for c in ['RF_PCA', 'RF_preprocessing', 'SVM_C', 'SVM_Gamma', 'SVM_Linear_C', 'SVM_Linear_PCA', 'SVM_Linear_Penalty',
                 'SVM_Linear_preprocessing', 'SVM_RBF_PCA', 'SVM_RBF_preprocessing', 'classifier_type', 'criterion', 'max_features',
                 'min_samples_split']:
@@ -111,31 +112,46 @@ def precalculate_performance():
         best = fmin(fn=fmin_objective, space=space, algo=rand.suggest, max_evals=50, trials=trials)
         for k, v in trials.best_trial['misc']['idxs'].items():
             if len(v) > 0:
-                row.at[k] = v[0]
+                df.at[idx, k] = v[0]
         for k, v in trials.best_trial['misc']['vals'].items():
             if len(v) > 0:
-                row.at[k] = v[0]
+                df.at[idx, k] = v[0]
+    print(df)
     # pickle.dump(df, open('metafeatures_original_perf.p', 'wb'))
     # df.to_csv('metafeatures_original_perf.csv')
 
 
+def _read_config(row: pd.Series) -> dict:
+    config = dict()
+    for k in [
+        'RF_PCA', 'RF_preprocessing', 'SVM_C', 'SVM_Gamma', 'SVM_Linear_C', 'SVM_Linear_PCA', 'SVM_Linear_Penalty',
+        'SVM_Linear_preprocessing', 'SVM_RBF_PCA', 'SVM_RBF_preprocessing', 'classifier_type', 'criterion',
+        'max_features', 'min_samples_split'
+    ]:
+        if not np.isnan(df.at[0, k]):
+            config[k] = int(df.at[0, k])
+    return config
+
+
 if __name__ == '__main__':
     # precalculate_performance()
-    df = pickle.load(open('metafeatures_original_perf.p', 'rb'))
-    # print(trials.best_trial['misc']['vals'])
-        # trials = Trials()
-        # as initial values pick points uniformly on the x-axis; we need this as a dict
-        # init_vals = [config]
-        # init_vals = [{'RF_PCA': 0.8, 'RF_preprocessing': 0,
-        #               'classifier_type': 0, 'criterion': 0,
-        #               'max_features': 0, 'min_samples_split': 0}]
+    df = pickle.load(open('metafeatures_original_perf.p', 'rb')).iloc[0:10]
+    trials = Trials()
 
-        # this generates a trial object that can be used to bootstrap computation for the optimizer
-        # trials = generate_trials_to_calculate(init_vals)
-        # data = {'X_train': X_train, 'X_test': X_test, 'y_train': y_train, 'y_test': y_test}
-        # fmin_objective = partial(objective, data=data)
-        # best = fmin(fn=fmin_objective, space=space, algo=tpe.suggest, max_evals=3, trials=trials)
-        # x_prime = space_eval(space, best)
+    init_config = _read_config(df.iloc[0])
+    print(init_config)
+    init_vals = [init_config]
 
+    trials = generate_trials_to_calculate(init_vals)
+    data = {
+        'X_train': pickle.load(open('original_datasets/abalone/X_train.p', 'rb')),
+        'X_test': pickle.load(open('original_datasets/abalone/X_test.p', 'rb')),
+        'y_train': pickle.load(open('original_datasets/abalone/y_train.p', 'rb')),
+        'y_test': pickle.load(open('original_datasets/abalone/y_test.p', 'rb'))
+    }
+    fmin_objective = partial(objective, data=data)
+    best = fmin(fn=fmin_objective, space=space, algo=tpe.suggest, max_evals=3, trials=trials)
+    x_prime = space_eval(space, best)
+    print(x_prime)
 
 
