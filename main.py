@@ -15,7 +15,9 @@ import numpy as np
 import pandas as pd
 from functools import partial
 import typing
+import seaborn as sns
 
+sns.set()
 
 pd.options.display.max_rows = 999
 pd.options.display.max_columns = 50
@@ -44,6 +46,14 @@ space = hp.choice('classifier_type', [
         'kernel': 'rbf'
     },
 ])
+
+
+def __unpack_item_vals(items_vals):
+    conf = dict()
+    for k, v in items_vals.items():
+        if len(v) > 0:
+            conf[k] = v[0]
+    return conf
 
 
 def __instantiate_classifier(args):
@@ -80,15 +90,16 @@ def objective(args, data):
 
 
 def _plot_best_so_far_loss(losses):
-    best_so_far = np.inf
-    x = []
-    y = []
-    for i in range(len(losses)):
-        if losses[i] < best_so_far:
-            best_so_far = losses[i]
-            x.append(i)
-            y.append(best_so_far)
-    plt.plot(x, y, marker='x')
+    y = np.minimum.accumulate(losses, axis=1)
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.set_xticks(np.arange(0, 20, 2))
+
+    plt.plot(range(y.shape[1]), y.mean(axis=0), markersize=5, c='darkgoldenrod', marker="s")
+
+    plt.fill_between(range(y.shape[1]), y.mean(axis=0) - y.std(axis=0), y.mean(axis=0) + y.std(axis=0), alpha=0.3, color='darkgoldenrod')
+
+
     plt.show()
 
 
@@ -145,7 +156,6 @@ def plot_validation_performance(dataset_name: str):
 
     # init_config = _read_config(row)
     # init_vals = [init_config]
-    trials = Trials()
     # trials = generate_trials_to_calculate(init_vals)
     train_data = {
         'X': pickle.load(open('original_datasets/' + dataset_name + '/X_train.p', 'rb')),
@@ -156,25 +166,23 @@ def plot_validation_performance(dataset_name: str):
         'y': pickle.load(open('original_datasets/' + dataset_name + '/y_test.p', 'rb')),
     }
     train_objective = partial(objective, data=train_data)
-    best = fmin(fn=train_objective, space=space, algo=tpe.suggest, max_evals=100, trials=trials)
-    space_eval(space, best)
-
-    # process trials
     val_objective = partial(objective, data=val_data)
-    val_loss = []
-    for i, t in enumerate(trials.trials):
-        conf = space_eval(space, best)
-        val_loss.append(val_objective(conf))
-    plt.plot(range(len(val_loss)), val_loss)
-    plt.show()
+
+    val_loss = np.zeros(shape=(5, 20))
+    for i in range(5):
+        trials = Trials()
+        fmin(fn=train_objective, space=space, algo=tpe.suggest, max_evals=20, trials=trials)
+        for j in range(20):
+            conf = __unpack_item_vals(trials.trials[0]["misc"]["vals"])
+            magic_str = space_eval(space, conf)
+            # clf = __instantiate_classifier(magic_str)
+            val_loss[i, j] = val_objective(magic_str)
+
     _plot_best_so_far_loss(val_loss)
 
 
 
 
 if __name__ == '__main__':
-    # precalculate_performance()
-    #
     plot_validation_performance('heart-h')
-
 
