@@ -204,8 +204,75 @@ def find_init_vals(dataset_name):
     return init_vals
 
 
+def __eval_tpe(dataset_name: str, warm_start=False, k=5) -> np.ndarray:
+    train_data = {
+        'X': pickle.load(open('original_datasets/' + dataset_name + '/X_train.p', 'rb')),
+        'y': pickle.load(open('original_datasets/' + dataset_name + '/y_train.p', 'rb')),
+    }
+    val_data = {
+        'X': pickle.load(open('original_datasets/' + dataset_name + '/X_test.p', 'rb')),
+        'y': pickle.load(open('original_datasets/' + dataset_name + '/y_test.p', 'rb')),
+    }
+    train_objective = partial(objective, data=train_data)
+    val_objective = partial(objective, data=val_data)
+
+    val_loss = np.zeros(shape=(k, 20))
+    # k-fold CV
+    print('Doing 5-fold CV on {}...'.format(dataset_name))
+    for i in range(k):
+        print('Validating fold {}'.format(i))
+        evals = 20
+        trials = Trials()
+        if warm_start:
+            init_vals = find_init_vals(dataset_name)
+            trials = generate_trials_to_calculate(init_vals)
+            evals = 15
+        fmin(fn=train_objective, space=space, algo=tpe.suggest, max_evals=evals, trials=trials, timeout=20)
+        for j in range(20):
+            conf = __unpack_item_vals(trials.trials[0]["misc"]["vals"])
+            magic_str = space_eval(space, conf)
+            val_loss[i, j] = val_objective(magic_str)
+    return val_loss
+
+
+
+def leave_one_dataset_out():
+    df = pickle.load(open('metafeatures_original_perf.p', 'rb')).sample(30).reset_index()
+
+    k = 5
+    val_err_tpe = np.full((len(df) * k, 20), np.inf)
+    val_err_mi_tpe = np.full((len(df) * k, 20), np.inf)
+
+    for idx, row in df.iterrows():
+        val_err_tpe[idx * k: (idx + 1) * k, :] = __eval_tpe(row['dataset_name'])
+        val_err_mi_tpe[idx * k: (idx + 1) * k, :] = __eval_tpe(row['dataset_name'], warm_start=True)
+
+
+    pickle.dump(val_err_tpe, open('val_error_tpe_loo.p', 'wb'))
+    pickle.dump(val_err_mi_tpe, open('val_error_mi_tpe_loo.p', 'wb'))
+
+
+    y = np.minimum.accumulate(val_err_tpe, axis=1)
+    fig = plt.figure(figsize=(10, 5))
+    ax = fig.add_subplot(111)
+    ax.set_xticks(np.arange(0, 20, 5))
+    ax.plot(range(y.shape[1]), y.mean(axis=0), markersize=5, c='darkgoldenrod', marker="s", label='TPE')
+    ax.fill_between(range(y.shape[1]), y.mean(axis=0) - y.std(axis=0), y.mean(axis=0) +
+                     y.std(axis=0), alpha=0.3, color='darkgoldenrod')
+
+    y = np.minimum.accumulate(val_err_mi_tpe, axis=1)
+    ax.plot(range(y.shape[1]), y.mean(axis=0), markersize=5, c='blue', marker="s")
+    ax.fill_between(range(y.shape[1]), y.mean(axis=0) - y.std(axis=0),
+                     y.mean(axis=0) + y.std(axis=0), alpha=0.3, color='blue', label='MI-TPE')
+    ax.set_xlabel('# function evaluations')
+    ax.set_ylabel('validation error')
+    ax.legend()
+    fig.savefig('LOO_val_30_datasets.png', dpi=300)
+    plt.show()
+
+
 if __name__ == '__main__':
-    plot_validation_performance('primary-tumor')
+    leave_one_dataset_out()
 
 
 
