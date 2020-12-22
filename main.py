@@ -100,7 +100,7 @@ def _load_dataset(path_prefix: str) -> typing.Tuple[pd.DataFrame, pd.DataFrame, 
 
 
 def precalculate_performance():
-    df = pickle.load(open('metafeatures_original_perf.p', 'rb'))
+    df = pickle.load(open('new_metafeatures_and_best_conf.p', 'rb'))
     df = df[df['dataset_name'] != 'optdigits']
     for c in ['RF_PCA', 'RF_preprocessing', 'SVM_C', 'SVM_Gamma', 'SVM_Linear_C', 'SVM_Linear_PCA', 'SVM_Linear_Penalty',
                 'SVM_Linear_preprocessing', 'SVM_RBF_PCA', 'SVM_RBF_preprocessing', 'classifier_type', 'criterion', 'max_features',
@@ -120,7 +120,7 @@ def precalculate_performance():
             if len(v) > 0:
                 df.at[idx, k] = v[0]
     print(df)
-    # pickle.dump(df, open('metafeatures_original_perf.p', 'wb'))
+    # pickle.dump(df, open('new_metafeatures_and_best_conf.p', 'wb'))
     # df.to_csv('metafeatures_original_perf.csv')
 
 
@@ -137,7 +137,6 @@ def _read_config(row: pd.Series) -> dict:
 
 
 def plot_validation_performance(dataset_name: str):
-    df = pickle.load(open('metafeatures_original_perf.p', 'rb'))
 
     train_data = {
         'X': pickle.load(open('original_datasets/' + dataset_name + '/X_train.p', 'rb')),
@@ -192,19 +191,27 @@ def plot_validation_performance(dataset_name: str):
     plt.show()
 
 
-def find_init_vals(dataset_name):
-    df = pickle.load(open('metafeatures_original_perf.p', 'rb'))
-    query = df[df['dataset_name'] == dataset_name].iloc[0, :-15].fillna(0)
+def find_init_vals(dataset_name, use_old_metafeatures=False):
+    df = pickle.load(open('original_datasets.p', 'rb'))
+    query = df[df['dataset_name'] == dataset_name].fillna(0)
     df = df[df['dataset_name'] != dataset_name]
-    search_space = df[df['dataset_name'] != dataset_name].iloc[:, :-15].values
+    search_space = df[df['dataset_name'] != dataset_name]
+    if use_old_metafeatures:
+        query = query.iloc[:, -46:].values
+        search_space = search_space.iloc[:, -46:].values
+    else:
+        query = query.iloc[:, :-61].values
+        search_space = search_space.iloc[:, :-61].values
+
+    configs = df.iloc[:, -60:-46]
     search_space = np.nan_to_num(search_space)
     kdtree = KDTree(search_space)
     d, idx = kdtree.query(query, 5)
-    init_vals = [_read_config(df.iloc[i, -14:]) for i in idx]
+    init_vals = [_read_config(configs.iloc[i, :]) for i in idx[0]]
     return init_vals
 
 
-def __eval_tpe(dataset_name: str, warm_start=False, k=5) -> np.ndarray:
+def __eval_tpe(dataset_name: str, k, warm_start=False, use_old_metafeatures=False) -> np.ndarray:
     train_data = {
         'X': pickle.load(open('original_datasets/' + dataset_name + '/X_train.p', 'rb')),
         'y': pickle.load(open('original_datasets/' + dataset_name + '/y_train.p', 'rb')),
@@ -224,7 +231,7 @@ def __eval_tpe(dataset_name: str, warm_start=False, k=5) -> np.ndarray:
         evals = 20
         trials = Trials()
         if warm_start:
-            init_vals = find_init_vals(dataset_name)
+            init_vals = find_init_vals(dataset_name, use_old_metafeatures)
             trials = generate_trials_to_calculate(init_vals)
             evals = 15
         fmin(fn=train_objective, space=space, algo=tpe.suggest, max_evals=evals, trials=trials, timeout=20)
@@ -237,43 +244,41 @@ def __eval_tpe(dataset_name: str, warm_start=False, k=5) -> np.ndarray:
 
 
 def leave_one_dataset_out():
-    df = pickle.load(open('metafeatures_original_perf.p', 'rb')).sample(30).reset_index()
+    df = pickle.load(open('new_metafeatures_and_best_conf.p', 'rb')).sample(10).reset_index()
 
-    k = 5
-    val_err_tpe = np.full((len(df) * k, 20), np.inf)
-    val_err_mi_tpe = np.full((len(df) * k, 20), np.inf)
+    k = 3
+    val_err_mi_tpe_old = np.full((len(df) * k, 20), np.inf)
+    val_err_mi_tpe_new = np.full((len(df) * k, 20), np.inf)
 
     for idx, row in df.iterrows():
-        val_err_tpe[idx * k: (idx + 1) * k, :] = __eval_tpe(row['dataset_name'])
-        val_err_mi_tpe[idx * k: (idx + 1) * k, :] = __eval_tpe(row['dataset_name'], warm_start=True)
+        val_err_mi_tpe_old[idx * k: (idx + 1) * k, :] = __eval_tpe(row['dataset_name'], k, warm_start=True, use_old_metafeatures=True)
+        val_err_mi_tpe_new[idx * k: (idx + 1) * k, :] = __eval_tpe(row['dataset_name'], k, warm_start=True, use_old_metafeatures=False)
 
 
-    pickle.dump(val_err_tpe, open('val_error_tpe_loo.p', 'wb'))
-    pickle.dump(val_err_mi_tpe, open('val_error_mi_tpe_loo.p', 'wb'))
+    pickle.dump(val_err_mi_tpe_old, open('val_error_mi_tpe_old_mf.p', 'wb'))
+    pickle.dump(val_err_mi_tpe_new, open('val_error_mi_tpe_new_mf.p', 'wb'))
 
 
-    y = np.minimum.accumulate(val_err_tpe, axis=1)
+    y = np.minimum.accumulate(val_err_mi_tpe_old, axis=1)
     fig = plt.figure(figsize=(10, 5))
     ax = fig.add_subplot(111)
     ax.set_xticks(np.arange(0, 20, 5))
-    ax.plot(range(y.shape[1]), y.mean(axis=0), markersize=5, c='darkgoldenrod', marker="s", label='TPE')
+    ax.plot(range(y.shape[1]), y.mean(axis=0), markersize=5, c='darkgoldenrod', marker="s", label='MI-TPE, old metafeatures')
     ax.fill_between(range(y.shape[1]), y.mean(axis=0) - y.std(axis=0), y.mean(axis=0) +
                      y.std(axis=0), alpha=0.3, color='darkgoldenrod')
 
-    y = np.minimum.accumulate(val_err_mi_tpe, axis=1)
+    y = np.minimum.accumulate(val_err_mi_tpe_new, axis=1)
     ax.plot(range(y.shape[1]), y.mean(axis=0), markersize=5, c='blue', marker="s")
     ax.fill_between(range(y.shape[1]), y.mean(axis=0) - y.std(axis=0),
-                     y.mean(axis=0) + y.std(axis=0), alpha=0.3, color='blue', label='MI-TPE')
+                     y.mean(axis=0) + y.std(axis=0), alpha=0.3, color='blue', label='MI-TPE, new metafeatures')
     ax.set_xlabel('# function evaluations')
     ax.set_ylabel('validation error')
     ax.legend()
-    fig.savefig('LOO_val_30_datasets.png', dpi=300)
+    fig.savefig('old_vs_new_metafeatures.png', dpi=300)
     plt.show()
 
 
 if __name__ == '__main__':
     leave_one_dataset_out()
-
-
 
 
