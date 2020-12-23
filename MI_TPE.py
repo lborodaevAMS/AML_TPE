@@ -197,33 +197,32 @@ def plot_validation_performance(dataset_name: str):
 
 
 def find_init_vals(dataset_name, use_old_metafeatures=False):
-    df = pickle.load(open('original_datasets.p', 'rb'))
-    query = df[df['dataset_name'] == dataset_name].fillna(0)
-    df = df[df['dataset_name'] != dataset_name]
-    search_space = df[df['dataset_name'] != dataset_name]
+    params = pickle.load(open('data/warm_start_data.p', 'rb'))
+    config_dim = params.shape[1]
     if use_old_metafeatures:
-        query = query.iloc[:, -46:].values
-        search_space = search_space.iloc[:, -46:].values
+        metafeatures = pickle.load(open('data/paper_metafeatures.p', 'rb'))
     else:
-        query = np.hstack([query.iloc[:, :-61].values, query.iloc[:, -46:].values])
-        search_space = np.hstack([search_space.iloc[:, :-61].values, search_space.iloc[:, -46:].values])
+        metafeatures = pickle.load(open('data/openml_metafeatures.p', 'rb'))
 
-    configs = df.iloc[:, -60:-46]
-    search_space = np.nan_to_num(search_space)
-    kdtree = KDTree(search_space)
+    # align all data in the same order
+    m = pd.merge(params, metafeatures, on='name')
+    query = m[m['name'] == dataset_name].iloc[0, config_dim:].fillna(0).values
+    params = m[m['name'] != dataset_name].iloc[:, 0:config_dim - 1]
+    metafeatures = m[m['name'] != dataset_name].iloc[:, config_dim:].fillna(0).values
+    kdtree = KDTree(metafeatures)
     d, idx = kdtree.query(query, 5)
-    init_vals = [_read_config(configs.iloc[i, :]) for i in idx[0]]
+    init_vals = [_read_config(params.iloc[i, :]) for i in idx]
     return init_vals
 
 
 def __eval_tpe(dataset_name: str, k, warm_start=False, use_old_metafeatures=False) -> np.ndarray:
     train_data = {
-        'X': pickle.load(open('original_datasets/' + dataset_name + '/X_train.p', 'rb')),
-        'y': pickle.load(open('original_datasets/' + dataset_name + '/y_train.p', 'rb')),
+        'X': pickle.load(open('data/datasets/' + dataset_name + '/X_train.p', 'rb')),
+        'y': pickle.load(open('data/datasets/' + dataset_name + '/y_train.p', 'rb')),
     }
     val_data = {
-        'X': pickle.load(open('original_datasets/' + dataset_name + '/X_test.p', 'rb')),
-        'y': pickle.load(open('original_datasets/' + dataset_name + '/y_test.p', 'rb')),
+        'X': pickle.load(open('data/datasets/' + dataset_name + '/X_test.p', 'rb')),
+        'y': pickle.load(open('data/datasets/' + dataset_name + '/y_test.p', 'rb')),
     }
     train_objective = partial(objective, data=train_data)
     val_objective = partial(objective, data=val_data)
