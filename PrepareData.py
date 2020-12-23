@@ -455,8 +455,3 @@ def download_paper_datasets():
     print('Saved OpenML metafeatures to data/openml_metafeatures.p')
     print('Saved preprocessed datasets to data/datasets/')
 
-
-if __name__ == '__main__':
-    download_paper_datasets()
-
-

@@ -15,6 +15,10 @@ import pandas as pd
 from functools import partial
 import typing
 import seaborn as sns
+from PrepareData import download_paper_datasets
+import os
+
+
 
 sns.set()
 
@@ -99,29 +103,30 @@ def _load_dataset(path_prefix: str) -> typing.Tuple[pd.DataFrame, pd.DataFrame, 
 
 
 
-def precalculate_performance():
-    df = pickle.load(open('new_metafeatures_and_best_conf.p', 'rb'))
-    df = df[df['dataset_name'] != 'optdigits']
-    for c in ['RF_PCA', 'RF_preprocessing', 'SVM_C', 'SVM_Gamma', 'SVM_Linear_C', 'SVM_Linear_PCA', 'SVM_Linear_Penalty',
-                'SVM_Linear_preprocessing', 'SVM_RBF_PCA', 'SVM_RBF_preprocessing', 'classifier_type', 'criterion', 'max_features',
-                'min_samples_split']:
-        df[c] = np.nan
-    for idx, row in df.iterrows():
-        print('Processing {} out of {}...'.format(idx, len(df)))
-        X_train, X_test, y_train, y_test = _load_dataset('original_datasets/' + row['dataset_name'])
+def random_search():
+    datasets = os.listdir('data/datasets')
+    df = pd.DataFrame()
+    print('Finding the best configs for {} datasets using Random Search...'.format(len(datasets)))
+    for i, d_name in enumerate(os.listdir('data/datasets')):
+        print('Processing {} ({} out of {})...'.format(d_name, i + 1, len(datasets)))
+        X_train, X_test, y_train, y_test = _load_dataset('data/datasets/' + d_name)
         trials = Trials()
-        data = {'X_train': X_train, 'X_test': X_test, 'y_train': y_train, 'y_test': y_test}
+        data = {'X': X_train, 'y': y_train}
         fmin_objective = partial(objective, data=data)
-        best = fmin(fn=fmin_objective, space=space, algo=rand.suggest, max_evals=40, trials=trials)
-        for k, v in trials.best_trial['misc']['idxs'].items():
-            if len(v) > 0:
-                df.at[idx, k] = v[0]
+        fmin(fn=fmin_objective, space=space, algo=rand.suggest, max_evals=40, trials=trials)
+        s = pd.Series(index=['RF_PCA', 'RF_preprocessing', 'SVM_C', 'SVM_Gamma', 'SVM_Linear_C',
+                             'SVM_Linear_PCA', 'SVM_Linear_Penalty', 'SVM_Linear_preprocessing',
+                             'SVM_RBF_PCA', 'SVM_RBF_preprocessing', 'classifier_type', 'criterion',
+                             'max_features', 'min_samples_split'])
+        # for k, v in trials.best_trial['misc']['idxs'].items():
+        #     if len(v) > 0:
+        #         s[k] = v[0]
         for k, v in trials.best_trial['misc']['vals'].items():
             if len(v) > 0:
-                df.at[idx, k] = v[0]
-    print(df)
-    # pickle.dump(df, open('new_metafeatures_and_best_conf.p', 'wb'))
-    # df.to_csv('metafeatures_original_perf.csv')
+                s[k] = v[0]
+        s['name'] = d_name
+        df = df.append(s, ignore_index=True)
+    pickle.dump(df, open('data/warm_start_data.p', 'wb'))
 
 
 def _read_config(row: pd.Series) -> dict:
@@ -243,42 +248,89 @@ def __eval_tpe(dataset_name: str, k, warm_start=False, use_old_metafeatures=Fals
 
 
 
-def leave_one_dataset_out():
-    df = pickle.load(open('new_metafeatures_and_best_conf.p', 'rb')).sample(10).reset_index()
+def benchmark_mi_tpe(k, n=1.0):
+    d_names = os.listdir('data/datasets/')
+    assert n < len(d_names)
+    d_names = np.random.choice(d_names, size=n, replace=False)
+    val_err_tpe = np.full((len(d_names) * k, 20), np.inf)
+    val_err_mi_tpe = np.full((len(d_names) * k, 20), np.inf)
 
-    k = 3
-    val_err_mi_tpe_old = np.full((len(df) * k, 20), np.inf)
-    val_err_mi_tpe_new = np.full((len(df) * k, 20), np.inf)
-
-    for idx, row in df.iterrows():
-        val_err_mi_tpe_old[idx * k: (idx + 1) * k, :] = __eval_tpe(row['dataset_name'], k, warm_start=True, use_old_metafeatures=True)
-        val_err_mi_tpe_new[idx * k: (idx + 1) * k, :] = __eval_tpe(row['dataset_name'], k, warm_start=True, use_old_metafeatures=False)
-
-
-    pickle.dump(val_err_mi_tpe_old, open('val_error_mi_tpe_old_mf.p', 'wb'))
-    pickle.dump(val_err_mi_tpe_new, open('val_error_mi_tpe_new_mf.p', 'wb'))
+    for i, name in enumerate(d_names):
+        val_err_tpe[i * k: (i + 1) * k, :] = __eval_tpe(name, k, warm_start=False, use_old_metafeatures=True)
+        val_err_mi_tpe[i * k: (i + 1) * k, :] = __eval_tpe(name, k, warm_start=True, use_old_metafeatures=True)
 
 
-    y = np.minimum.accumulate(val_err_mi_tpe_old, axis=1)
+    pickle.dump(val_err_tpe, open('data/val_error_tpe.p', 'wb'))
+    pickle.dump(val_err_mi_tpe, open('data/val_error_mi_tpe.p', 'wb'))
+
+
+    y = np.minimum.accumulate(val_err_tpe, axis=1)
     fig = plt.figure(figsize=(10, 5))
     ax = fig.add_subplot(111)
     ax.set_xticks(np.arange(0, 20, 5))
-    ax.plot(range(y.shape[1]), y.mean(axis=0), markersize=5, c='darkgoldenrod', marker="s", label='MI-TPE, old metafeatures')
+    ax.plot(range(y.shape[1]), y.mean(axis=0), markersize=5, c='darkgoldenrod', marker="s", label='TPE')
     ax.fill_between(range(y.shape[1]), y.mean(axis=0) - y.std(axis=0), y.mean(axis=0) +
                      y.std(axis=0), alpha=0.3, color='darkgoldenrod')
 
-    y = np.minimum.accumulate(val_err_mi_tpe_new, axis=1)
+    y = np.minimum.accumulate(val_err_mi_tpe, axis=1)
     ax.plot(range(y.shape[1]), y.mean(axis=0), markersize=5, c='blue', marker="s")
     ax.fill_between(range(y.shape[1]), y.mean(axis=0) - y.std(axis=0),
-                     y.mean(axis=0) + y.std(axis=0), alpha=0.3, color='blue', label='MI-TPE, new metafeatures')
+                     y.mean(axis=0) + y.std(axis=0), alpha=0.3, color='blue', label='MI-TPE')
     ax.set_xlabel('# function evaluations')
     ax.set_ylabel('validation error')
     ax.legend()
-    fig.savefig('old_plus_new_metafeatures.png', dpi=300)
+    fig.savefig('img/tpe_vs_mitpe.png', dpi=300)
     plt.show()
 
 
-if __name__ == '__main__':
-    leave_one_dataset_out()
 
+def benchmark_metafeatures():
+    d_names = os.listdir('data/datasets/')
+    assert n < len(d_names)
+    d_names = np.random.choice(d_names, size=n, replace=False)
+    val_err_old = np.full((len(d_names) * k, 20), np.inf)
+    val_err_new = np.full((len(d_names) * k, 20), np.inf)
+
+    for i, name in enumerate(d_names):
+        val_err_old[i * k: (i + 1) * k, :] = __eval_tpe(name, k, warm_start=True, use_old_metafeatures=True)
+        val_err_new[i * k: (i + 1) * k, :] = __eval_tpe(name, k, warm_start=True, use_old_metafeatures=False)
+
+    pickle.dump(val_err_old, open('data/val_error_old_mf.p', 'wb'))
+    pickle.dump(val_err_new, open('data/val_error_new_mf.p', 'wb'))
+
+    y = np.minimum.accumulate(val_err_old, axis=1)
+    fig = plt.figure(figsize=(10, 5))
+    ax = fig.add_subplot(111)
+    ax.set_xticks(np.arange(0, 20, 5))
+    ax.plot(range(y.shape[1]), y.mean(axis=0), markersize=5, c='darkgoldenrod',
+            marker="s", label='MI-TPE, old metafeatures')
+    ax.fill_between(range(y.shape[1]), y.mean(axis=0) - y.std(axis=0), y.mean(axis=0) +
+                    y.std(axis=0), alpha=0.3, color='darkgoldenrod')
+
+    y = np.minimum.accumulate(val_err_new, axis=1)
+    ax.plot(range(y.shape[1]), y.mean(axis=0), markersize=5, c='blue', marker="s")
+    ax.fill_between(range(y.shape[1]), y.mean(axis=0) - y.std(axis=0),
+                    y.mean(axis=0) + y.std(axis=0), alpha=0.3, color='blue', label='MI-TPE, new metafeatures')
+    ax.set_xlabel('# function evaluations')
+    ax.set_ylabel('validation error')
+    ax.legend()
+    fig.savefig('img/old_vs_new_metafeatures.png', dpi=300)
+    plt.show()
+
+
+
+
+if __name__ == '__main__':
+    download_paper_datasets()
+    random_search()
+
+    # k = number of folds
+    k = 5
+
+    # n = number of datasets to consider
+    # note that the data from all evaluated datasets it still used for warmstarting the problem
+    n = 2
+
+    benchmark_mi_tpe(k, n)
+    benchmark_metafeatures(k, n)
 
