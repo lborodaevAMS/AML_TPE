@@ -9,5 +9,11 @@ Works as follows:
 3. Random Search for best hyperparameters
 4. Evaluate MI-TPE and TPE in leave-one-dataset-out fashion with warm starting MI-TPE on the data from step 3
 
+Run:
+
+```bash
+python3 MI_TPE.py
+```
+
 ![performance](/img/lymph.png)
 

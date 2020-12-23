@@ -1,5 +1,5 @@
 import os
-from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
+from sklearn.preprocessing import OneHotEncoder, MinMaxScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 import pickle
 import openml
@@ -427,6 +427,7 @@ def download_paper_datasets():
         if X.shape[1] > 0:
             scaler = MinMaxScaler()
             X = scaler.fit_transform(X)
+        y = LabelEncoder().fit_transform(y)
         try:
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, stratify=y)
         except ValueError:
