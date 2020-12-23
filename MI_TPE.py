@@ -330,6 +330,6 @@ if __name__ == '__main__':
     # note that the data from all evaluated datasets it still used for warmstarting the problem
     n = 2
 
-    # benchmark_mi_tpe(k, n)
+    benchmark_mi_tpe(k, n)
     benchmark_metafeatures(k, n)
 
