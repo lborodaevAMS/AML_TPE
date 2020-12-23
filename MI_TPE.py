@@ -283,7 +283,7 @@ def benchmark_mi_tpe(k, n=1.0):
 
 
 
-def benchmark_metafeatures():
+def benchmark_metafeatures(k, n):
     d_names = os.listdir('data/datasets/')
     assert n < len(d_names)
     d_names = np.random.choice(d_names, size=n, replace=False)
@@ -330,6 +330,6 @@ if __name__ == '__main__':
     # note that the data from all evaluated datasets it still used for warmstarting the problem
     n = 2
 
-    benchmark_mi_tpe(k, n)
+    # benchmark_mi_tpe(k, n)
     benchmark_metafeatures(k, n)
 
